@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "AI Notes",
+  "version": "1.0.0",
+  "description": "AI-powered note-taking with web page content extraction",
+  "permissions": [
+    "sidePanel",
+    "activeTab",
+    "storage",
+    "contextMenus",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Open AI Notes"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
+

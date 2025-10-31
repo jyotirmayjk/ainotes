@@ -1,0 +1,25 @@
+{
+  "name": "ai-notes-extension",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && npm run copy-files",
+    "copy-files": "cp manifest.json dist/ && cp background.js dist/ && cp content.js dist/ && cp sidepanel.html dist/",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "nanoid": "^5.1.6",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "vite": "^7.1.7"
+  }
+}
+
