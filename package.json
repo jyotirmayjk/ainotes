@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && npm run copy-files",
-    "copy-files": "cp manifest.json dist/ && cp background.js dist/ && cp content.js dist/ && cp sidepanel.html dist/",
+    "copy-files": "cp manifest.json dist/ && cp background.js dist/ && cp content.js dist/ && cp sidepanel.html dist/ && cp pagePrompt.js dist/",
     "preview": "vite preview"
   },
   "dependencies": {

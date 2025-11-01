@@ -21,50 +21,25 @@ Always respond with valid JSON in this format (no markdown, no code blocks):
 
 Keep responses concise and actionable. Use markdown formatting for the content.`;
 
+// Helper to strip markdown code blocks
+function stripMarkdownCodeBlocks(text) {
+  if (!text || typeof text !== 'string') return text;
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/^```(?:json|javascript|js)?\s*\n?/i, '');
+  cleaned = cleaned.replace(/\n?```\s*$/i, '');
+  return cleaned.trim();
+}
+
 export default function AIAssistant() {
   const { selectedText, pageContext, createNote, getActiveNote, updateNote, clearSelectedText } = useNotesStore();
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [session, setSession] = useState(null);
   const promptRef = useRef(null);
+  const sessionRef = useRef(null);
 
   const activeNote = getActiveNote();
-
-  // Initialize AI session
-  useEffect(() => {
-    const initSession = async () => {
-      try {
-        if (!window.ai?.languageModel) {
-          setError('Prompt API not available. Enable it in chrome://flags');
-          return;
-        }
-
-        const capabilities = await window.ai.languageModel.capabilities();
-        if (capabilities.available === 'no') {
-          setError('Language model not available');
-          return;
-        }
-
-        const aiSession = await window.ai.languageModel.create({
-          systemPrompt: SYSTEM_PROMPT
-        });
-        setSession(aiSession);
-      } catch (err) {
-        console.error('Failed to initialize AI session:', err);
-        setError('Failed to initialize AI: ' + err.message);
-      }
-    };
-
-    initSession();
-
-    return () => {
-      if (session) {
-        session.destroy();
-      }
-    };
-  }, []);
 
   // Auto-fill prompt with selected text
   useEffect(() => {
@@ -73,83 +48,167 @@ export default function AIAssistant() {
     }
   }, [selectedText, pageContext]);
 
-  const stripMarkdownCodeBlocks = (text) => {
-    if (!text || typeof text !== 'string') return text;
-    let cleaned = text.trim();
-    cleaned = cleaned.replace(/^```(?:json|javascript|js)?\s*\n?/i, '');
-    cleaned = cleaned.replace(/\n?```\s*$/i, '');
-    return cleaned.trim();
-  };
-
+  // Try to use LanguageModel directly in side panel, fallback to page injection
   const handleGenerate = async () => {
-    if (!prompt.trim() || !session) return;
+    if (!prompt.trim()) return;
 
     setLoading(true);
     setError(null);
     setResponse(null);
 
-    try {
-      const userPrompt = activeNote
-        ? `Current note context:\nTitle: ${activeNote.title}\nContent: ${activeNote.content}\n\nUser request: ${prompt}`
-        : prompt;
+    const userPrompt = activeNote
+      ? `Current note context:\nTitle: ${activeNote.title}\nContent: ${activeNote.content}\n\nUser request: ${prompt}`
+      : prompt;
 
-      const aiResponse = await session.prompt(userPrompt);
-      
-      console.log('AI Response:', aiResponse);
-
-      // Parse response
-      const cleaned = stripMarkdownCodeBlocks(aiResponse);
-      let parsed;
-
+    // First, try using LanguageModel directly in side panel (extension page context)
+    // Check multiple possible ways the API might be exposed
+    const LanguageModel = globalThis.LanguageModel || window.LanguageModel;
+    const aiLanguageModel = window.ai?.languageModel;
+    
+    if (typeof LanguageModel === 'function') {
       try {
-        parsed = JSON.parse(cleaned);
-      } catch (parseError) {
-        console.error('JSON parse error:', parseError);
-        // Fallback: treat as plain text
-        parsed = {
-          action: 'expand',
-          title: 'AI Generated Note',
-          content: aiResponse,
-          tags: [],
-          keyPoints: []
-        };
-      }
+        // Check availability
+        const availability = await LanguageModel.availability();
+        if (!availability || availability === 'unavailable') {
+          throw new Error('LanguageModel is not available in this context');
+        }
 
-      setResponse(parsed);
-
-      // Auto-save as note if requested
-      if (parsed.content) {
-        if (activeNote) {
-          // Update existing note
-          updateNote(activeNote.id, {
-            content: activeNote.content + '\n\n## AI Generated\n\n' + parsed.content,
-            tags: [...new Set([...activeNote.tags, ...(parsed.tags || [])])]
-          });
-        } else {
-          // Create new note
-          createNote({
-            title: parsed.title || 'AI Generated Note',
-            content: parsed.content,
-            sourceUrl: pageContext?.sourceUrl || '',
-            pageTitle: pageContext?.pageTitle || '',
-            tags: parsed.tags || [],
-            aiGenerated: true
+        // Create or reuse session
+        if (!sessionRef.current) {
+          sessionRef.current = await LanguageModel.create({
+            systemPrompt: SYSTEM_PROMPT
           });
         }
-      }
 
-      // Clear selected text after processing
-      if (selectedText) {
-        clearSelectedText();
-      }
+        // Get AI response
+        const aiResponse = await sessionRef.current.prompt(userPrompt);
+        const cleaned = stripMarkdownCodeBlocks(aiResponse);
+        
+        let parsed;
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch (_) {
+          parsed = {
+            action: 'expand',
+            title: 'AI Generated Note',
+            content: aiResponse,
+            tags: [],
+            keyPoints: []
+          };
+        }
 
-      setPrompt('');
-    } catch (err) {
-      console.error('AI generation error:', err);
-      setError('Failed to generate: ' + err.message);
-    } finally {
-      setLoading(false);
+        handleResponse(parsed);
+        return;
+      } catch (directError) {
+        console.log('Direct LanguageModel failed, trying window.ai.languageModel:', directError);
+      }
     }
+
+    // Try window.ai.languageModel in side panel
+    if (aiLanguageModel) {
+      try {
+        const capabilities = await aiLanguageModel.capabilities();
+        if (capabilities.available === 'no') {
+          throw new Error('Language model not available');
+        }
+
+        // Create or reuse session
+        if (!sessionRef.current) {
+          sessionRef.current = await aiLanguageModel.create({
+            systemPrompt: SYSTEM_PROMPT
+          });
+        }
+
+        // Get AI response
+        const aiResponse = await sessionRef.current.prompt(userPrompt);
+        const cleaned = stripMarkdownCodeBlocks(aiResponse);
+        
+        let parsed;
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch (_) {
+          parsed = {
+            action: 'expand',
+            title: 'AI Generated Note',
+            content: aiResponse,
+            tags: [],
+            keyPoints: []
+          };
+        }
+
+        handleResponse(parsed);
+        return;
+      } catch (directError) {
+        console.log('window.ai.languageModel failed, trying page injection:', directError);
+        // Fall through to page injection method
+      }
+    }
+
+    // Fallback: use page injection method
+    chrome.runtime.sendMessage(
+      {
+        type: 'PROMPT_AI_REQUEST',
+        prompt: userPrompt,
+        context: {
+          pageContext,
+          selectedText
+        },
+        activeNote: activeNote
+          ? {
+              id: activeNote.id,
+              title: activeNote.title,
+              content: activeNote.content,
+              tags: activeNote.tags
+            }
+          : null,
+        systemPrompt: SYSTEM_PROMPT
+      },
+      (result) => {
+        if (chrome.runtime.lastError) {
+          console.error('AI request error:', chrome.runtime.lastError);
+          setError('Failed to contact AI helper: ' + chrome.runtime.lastError.message);
+          setLoading(false);
+          return;
+        }
+
+        if (!result?.success) {
+          setError(result?.error || 'Failed to generate response');
+          setLoading(false);
+          return;
+        }
+
+        handleResponse(result.response);
+      }
+    );
+  };
+
+  const handleResponse = (parsed) => {
+    setResponse(parsed);
+
+    if (parsed?.content) {
+      if (activeNote) {
+        updateNote(activeNote.id, {
+          content: activeNote.content + '\n\n## AI Generated\n\n' + parsed.content,
+          tags: [...new Set([...activeNote.tags, ...(parsed.tags || [])])]
+        });
+      } else {
+        createNote({
+          title: parsed.title || 'AI Generated Note',
+          content: parsed.content,
+          sourceUrl: pageContext?.sourceUrl || '',
+          pageTitle: pageContext?.pageTitle || '',
+          tags: parsed.tags || [],
+          aiGenerated: true
+        });
+      }
+    }
+
+    if (selectedText) {
+      clearSelectedText();
+    }
+
+    setPrompt('');
+    setLoading(false);
   };
 
   const handleKeyDown = (e) => {
@@ -210,7 +269,7 @@ export default function AIAssistant() {
 
       <button
         onClick={handleGenerate}
-        disabled={!prompt.trim() || loading || !session}
+        disabled={!prompt.trim() || loading}
         style={{
           ...styles.button,
           ...(loading ? styles.buttonDisabled : {})

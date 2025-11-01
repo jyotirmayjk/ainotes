@@ -5,7 +5,7 @@ A Chrome/Edge browser extension with AI-powered note-taking capabilities and web
 ## Features
 
 - **Side Panel UI**: Opens a notes panel in the browser sidebar
-- **AI Assistant**: Uses Chrome's Prompt API for intelligent note-taking
+- **AI Assistant**: Uses Chrome's Prompt API (via injected page script) for intelligent note-taking
 - **Content Extraction**: Capture selected text from any webpage
 - **Context Menu**: Right-click "Add to Notes" on selected text
 - **Persistent Storage**: Notes saved via chrome.storage.local
@@ -64,8 +64,9 @@ Then load the extension from the `dist` folder as described above. You'll need t
 ## Architecture
 
 - **manifest.json**: Extension configuration
-- **background.js**: Service worker for extension lifecycle
+- **background.js**: Service worker for extension lifecycle and AI message routing
 - **content.js**: Content script for page interaction
+- **pagePrompt.js**: Injected page script that interacts with the Prompt API in the page context
 - **sidepanel/**: React app for the side panel UI
   - **NoteEditor.jsx**: Note editing interface
   - **AIAssistant.jsx**: AI-powered note generation
