@@ -34,9 +34,9 @@ This will create a `dist/` folder with all extension files.
 3. Click "Load unpacked"
 4. Select the `extension/dist` folder
 
-### 4. Enable Prompt API
+### 4. Enable Prompt API (Only valid if you have access to Prompt API)
 
-The AI features require Chrome's experimental Prompt API:
+The AI features require Chrome's experimental Prompt API:This was available only for hackathon.
 
 1. Go to `chrome://flags/#prompt-api-for-gemini-nano`
 2. Enable the flag
